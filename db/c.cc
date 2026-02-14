@@ -4794,6 +4794,16 @@ unsigned char rocksdb_readoptions_get_total_order_seek(
   return opt->rep.total_order_seek;
 }
 
+void rocksdb_readoptions_set_auto_prefix_mode(rocksdb_readoptions_t* opt,
+                                              unsigned char v) {
+  opt->rep.auto_prefix_mode = v;
+}
+
+unsigned char rocksdb_readoptions_get_auto_prefix_mode(
+    rocksdb_readoptions_t* opt) {
+  return opt->rep.auto_prefix_mode;
+}
+
 void rocksdb_readoptions_set_max_skippable_internal_keys(
     rocksdb_readoptions_t* opt, uint64_t v) {
   opt->rep.max_skippable_internal_keys = v;
@@ -5497,6 +5507,15 @@ rocksdb_slicetransform_t* rocksdb_slicetransform_create_fixed_prefix(
     size_t prefixLen) {
   SliceTransformWrapper* wrapper = new SliceTransformWrapper;
   wrapper->rep_ = ROCKSDB_NAMESPACE::NewFixedPrefixTransform(prefixLen);
+  wrapper->state_ = nullptr;
+  wrapper->destructor_ = &SliceTransformWrapper::DoNothing;
+  return wrapper;
+}
+
+rocksdb_slicetransform_t* rocksdb_slicetransform_create_capped_prefix(
+    size_t capLen) {
+  SliceTransformWrapper* wrapper = new SliceTransformWrapper;
+  wrapper->rep_ = ROCKSDB_NAMESPACE::NewCappedPrefixTransform(capLen);
   wrapper->state_ = nullptr;
   wrapper->destructor_ = &SliceTransformWrapper::DoNothing;
   return wrapper;

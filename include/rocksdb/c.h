@@ -2030,6 +2030,10 @@ extern ROCKSDB_LIBRARY_API void rocksdb_readoptions_set_total_order_seek(
     rocksdb_readoptions_t*, unsigned char);
 extern ROCKSDB_LIBRARY_API unsigned char
 rocksdb_readoptions_get_total_order_seek(rocksdb_readoptions_t*);
+extern ROCKSDB_LIBRARY_API void rocksdb_readoptions_set_auto_prefix_mode(
+    rocksdb_readoptions_t*, unsigned char);
+extern ROCKSDB_LIBRARY_API unsigned char
+rocksdb_readoptions_get_auto_prefix_mode(rocksdb_readoptions_t*);
 extern ROCKSDB_LIBRARY_API void
 rocksdb_readoptions_set_max_skippable_internal_keys(rocksdb_readoptions_t*,
                                                     uint64_t);
@@ -2372,6 +2376,8 @@ rocksdb_slicetransform_create(
     const char* (*name)(void*));
 extern ROCKSDB_LIBRARY_API rocksdb_slicetransform_t*
     rocksdb_slicetransform_create_fixed_prefix(size_t);
+extern ROCKSDB_LIBRARY_API rocksdb_slicetransform_t*
+    rocksdb_slicetransform_create_capped_prefix(size_t);
 extern ROCKSDB_LIBRARY_API rocksdb_slicetransform_t*
 rocksdb_slicetransform_create_noop(void);
 extern ROCKSDB_LIBRARY_API void rocksdb_slicetransform_destroy(
