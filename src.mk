@@ -31,6 +31,7 @@ LIB_SOURCES =                                                   \
   db/blob/prefetch_buffer_collection.cc                         \
   db/builder.cc                                                 \
   db/c.cc                                                       \
+  db/restate.cc                                                  \
   db/coalescing_iterator.cc                                     \
   db/column_family.cc                                           \
   db/compaction/compaction.cc                                   \
