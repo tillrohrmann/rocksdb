@@ -650,6 +650,7 @@ endif
 ROCKSDBTESTS_SUBSET ?= $(TESTS)
 
 # c_test - doesn't use gtest
+# restate_test - doesn't use gtest
 # env_test - suspicious use of test::TmpDir
 # deletefile_test - serial because it generates giant temporary files in
 #   its various tests. Parallel can fill up your /dev/shm
@@ -657,6 +658,7 @@ ROCKSDBTESTS_SUBSET ?= $(TESTS)
 #   of DBFilterConstructionReserveMemoryTestWithParam can fill up /dev/shm
 NON_PARALLEL_TEST = \
 	c_test \
+	restate_test \
 	env_test \
 	deletefile_test \
 	db_bloom_filter_test \
@@ -1348,6 +1350,9 @@ dynamic_bloom_test: $(OBJ_DIR)/util/dynamic_bloom_test.o $(TEST_LIBRARY) $(LIBRA
 	$(AM_LINK)
 
 c_test: $(OBJ_DIR)/db/c_test.o $(TEST_LIBRARY) $(LIBRARY)
+	$(AM_LINK)
+
+restate_test: $(OBJ_DIR)/db/restate_test.o $(TEST_LIBRARY) $(LIBRARY)
 	$(AM_LINK)
 
 cache_test: $(OBJ_DIR)/cache/cache_test.o $(TEST_LIBRARY) $(LIBRARY)

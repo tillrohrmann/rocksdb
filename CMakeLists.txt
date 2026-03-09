@@ -1613,6 +1613,12 @@ if(WITH_TESTS)
     target_link_libraries(c_test ${ROCKSDB_LIB_FOR_C} testharness)
     add_test(NAME c_test COMMAND c_test${ARTIFACT_SUFFIX})
     add_dependencies(rocksdb_check c_test)
+
+    # Restate-specific C bindings test
+    add_executable(restate_test db/restate_test.c)
+    target_link_libraries(restate_test ${ROCKSDB_LIB_FOR_C} testharness)
+    add_test(NAME restate_test COMMAND restate_test${ARTIFACT_SUFFIX})
+    add_dependencies(rocksdb_check restate_test)
   endif()
 endif()
 
