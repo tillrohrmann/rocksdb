@@ -15,8 +15,10 @@
 #include <vector>
 
 #include "rocksdb/db.h"
+#include "rocksdb/iterator.h"
 #include "rocksdb/listener.h"
 #include "rocksdb/options.h"
+#include "rocksdb/sst_file_reader.h"
 #include "rocksdb/status.h"
 #include "rocksdb/table_properties.h"
 #include "rocksdb/types.h"
@@ -25,10 +27,13 @@ using ROCKSDB_NAMESPACE::ColumnFamilyHandle;
 using ROCKSDB_NAMESPACE::DB;
 using ROCKSDB_NAMESPACE::EntryType;
 using ROCKSDB_NAMESPACE::FlushJobInfo;
+using ROCKSDB_NAMESPACE::Iterator;
 using ROCKSDB_NAMESPACE::Options;
 using ROCKSDB_NAMESPACE::Range;
+using ROCKSDB_NAMESPACE::ReadOptions;
 using ROCKSDB_NAMESPACE::SequenceNumber;
 using ROCKSDB_NAMESPACE::Slice;
+using ROCKSDB_NAMESPACE::SstFileReader;
 using ROCKSDB_NAMESPACE::Status;
 using ROCKSDB_NAMESPACE::TableProperties;
 using ROCKSDB_NAMESPACE::TablePropertiesCollection;
@@ -52,7 +57,24 @@ struct rocksdb_flushjobinfo_t {
 struct rocksdb_options_t {
   Options rep;
 };
+struct rocksdb_iterator_t {
+  Iterator* rep;
+};
+struct rocksdb_readoptions_t {
+  ReadOptions rep;
+  Slice upper_bound;
+  Slice lower_bound;
+  Slice timestamp;
+  Slice iter_start_ts;
+};
 }
+
+// SstFileReader wrapper - holds the reader and optionally the table properties
+struct rocksdb_sstfilereader_t {
+  SstFileReader* rep;
+  // We store the shared_ptr to keep the properties alive
+  std::shared_ptr<const TableProperties> table_properties;
+};
 
 // Internal structure to hold a TablePropertiesCollection and allow indexed
 // access. The map is converted to a vector for O(1) index-based access.
@@ -655,6 +677,60 @@ const char* rocksdb_table_properties_get_compression_name(
     *len = props->rep->compression_name.size();
   }
   return props->rep->compression_name.c_str();
+}
+
+/* ============================================================================
+ * SST File Reader implementation
+ * ============================================================================
+ */
+
+rocksdb_sstfilereader_t* rocksdb_sstfilereader_create(
+    const rocksdb_options_t* options) {
+  auto* reader = new rocksdb_sstfilereader_t;
+  reader->rep = new SstFileReader(options->rep);
+  return reader;
+}
+
+void rocksdb_sstfilereader_destroy(rocksdb_sstfilereader_t* reader) {
+  if (reader) {
+    delete reader->rep;
+    delete reader;
+  }
+}
+
+void rocksdb_sstfilereader_open(rocksdb_sstfilereader_t* reader,
+                                const char* file_path, char** errptr) {
+  Status s = reader->rep->Open(std::string(file_path));
+  SaveError(errptr, s);
+}
+
+rocksdb_table_properties_t* rocksdb_sstfilereader_get_table_properties(
+    rocksdb_sstfilereader_t* reader) {
+  std::shared_ptr<const TableProperties> props =
+      reader->rep->GetTableProperties();
+  if (!props) {
+    return nullptr;
+  }
+  // Store the shared_ptr in the reader to keep the properties alive
+  reader->table_properties = props;
+
+  // Create a wrapper that the caller must destroy
+  auto* result = new rocksdb_table_properties_t;
+  result->rep = props.get();
+  return result;
+}
+
+void rocksdb_sstfilereader_verify_checksum(rocksdb_sstfilereader_t* reader,
+                                           char** errptr) {
+  Status s = reader->rep->VerifyChecksum();
+  SaveError(errptr, s);
+}
+
+rocksdb_iterator_t* rocksdb_sstfilereader_new_iterator(
+    rocksdb_sstfilereader_t* reader, const rocksdb_readoptions_t* options) {
+  auto* iter = new rocksdb_iterator_t;
+  iter->rep = reader->rep->NewIterator(options->rep);
+  return iter;
 }
 
 }  // extern "C"

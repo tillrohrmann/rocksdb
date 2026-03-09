@@ -241,6 +241,50 @@ extern ROCKSDB_LIBRARY_API const char*
 rocksdb_table_properties_get_compression_name(
     const rocksdb_table_properties_t* props, size_t* len);
 
+/* ============================================================================
+ * SST File Reader - Read table properties directly from SST files
+ * ============================================================================
+ */
+
+typedef struct rocksdb_sstfilereader_t rocksdb_sstfilereader_t;
+
+/* Create an SST file reader with the given options.
+ * The options object can be destroyed after creating the reader.
+ */
+extern ROCKSDB_LIBRARY_API rocksdb_sstfilereader_t*
+rocksdb_sstfilereader_create(const rocksdb_options_t* options);
+
+/* Destroy the SST file reader */
+extern ROCKSDB_LIBRARY_API void rocksdb_sstfilereader_destroy(
+    rocksdb_sstfilereader_t* reader);
+
+/* Open an SST file for reading.
+ * The file_path should be the path to an existing SST file.
+ */
+extern ROCKSDB_LIBRARY_API void rocksdb_sstfilereader_open(
+    rocksdb_sstfilereader_t* reader, const char* file_path, char** errptr);
+
+/* Get table properties from the opened SST file.
+ * Returns NULL if the file hasn't been opened or on error.
+ * The returned properties must be destroyed with
+ * rocksdb_table_properties_destroy. Note: Unlike properties from
+ * rocksdb_table_properties_collection_properties, the caller owns this pointer
+ * and must destroy it.
+ */
+extern ROCKSDB_LIBRARY_API rocksdb_table_properties_t*
+rocksdb_sstfilereader_get_table_properties(rocksdb_sstfilereader_t* reader);
+
+/* Verify the checksum of the SST file */
+extern ROCKSDB_LIBRARY_API void rocksdb_sstfilereader_verify_checksum(
+    rocksdb_sstfilereader_t* reader, char** errptr);
+
+/* Create an iterator over the SST file contents.
+ * The iterator must be destroyed with rocksdb_iter_destroy.
+ */
+extern ROCKSDB_LIBRARY_API rocksdb_iterator_t*
+rocksdb_sstfilereader_new_iterator(rocksdb_sstfilereader_t* reader,
+                                   const rocksdb_readoptions_t* options);
+
 #ifdef __cplusplus
 }
 #endif
