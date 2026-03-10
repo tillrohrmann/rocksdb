@@ -354,6 +354,31 @@ void rocksdb_user_collected_properties_insert(
 }
 
 /* ============================================================================
+ * ReadOptions - Table Filter
+ * ============================================================================
+ */
+
+void rocksdb_readoptions_set_table_filter(
+    rocksdb_readoptions_t* opt, void* state,
+    unsigned char (*filter)(void*, const rocksdb_table_properties_t*),
+    void (*destroy)(void*)) {
+  // Wrap the state in a shared_ptr so that the destroy callback is
+  // invoked exactly once when the last copy of the std::function is destroyed.
+  auto guard = std::shared_ptr<void>(state, [destroy](void* s) {
+    if (destroy) {
+      destroy(s);
+    }
+  });
+
+  opt->rep.table_filter = [guard,
+                           filter](const TableProperties& props) -> bool {
+    rocksdb_table_properties_t c_props;
+    c_props.rep = &props;
+    return filter(guard.get(), &c_props);
+  };
+}
+
+/* ============================================================================
  * Table Properties Collection
  * ============================================================================
  */

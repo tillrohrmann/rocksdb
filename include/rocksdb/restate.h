@@ -242,6 +242,23 @@ rocksdb_table_properties_get_compression_name(
     const rocksdb_table_properties_t* props, size_t* len);
 
 /* ============================================================================
+ * ReadOptions - Table Filter
+ * ============================================================================
+ */
+
+/* Set a callback that decides whether to scan a given SST file during
+ * iteration. The callback receives the table's properties and should return
+ * non-zero (true) to include the table or zero (false) to skip it.
+ * Only affects iterators, not point lookups.
+ * The destroy callback is invoked when the ReadOptions is destroyed.
+ */
+extern ROCKSDB_LIBRARY_API void rocksdb_readoptions_set_table_filter(
+    rocksdb_readoptions_t* opt, void* state,
+    unsigned char (*filter)(void* state,
+                            const rocksdb_table_properties_t* props),
+    void (*destroy)(void* state));
+
+/* ============================================================================
  * SST File Reader - Read table properties directly from SST files
  * ============================================================================
  */
