@@ -386,8 +386,7 @@ void ForwardIterator::SeekInternal(const Slice& internal_key,
   assert(mutable_iter_);
   // mutable
   if (!seek_after_async_io) {
-    seek_to_first ? mutable_iter_->SeekToFirst()
-                  : mutable_iter_->Seek(internal_key);
+    SeekMutable(internal_key, seek_to_first);
   }
 
   // immutable
@@ -410,8 +409,7 @@ void ForwardIterator::SeekInternal(const Slice& internal_key,
         // Some iterators are trimmed. Need to rebuild.
         RebuildIterators(true);
         // Already seeked mutable iter, so seek again
-        seek_to_first ? mutable_iter_->SeekToFirst()
-                      : mutable_iter_->Seek(internal_key);
+        SeekMutable(internal_key, seek_to_first);
       }
       {
         auto tmp = MinIterHeap(MinIterComparator(&cfd_->internal_comparator()));
@@ -586,6 +584,22 @@ void ForwardIterator::Next() {
     }
   }
 
+  // Tailing-iterator correctness: the skiplist iterator cannot observe
+  // nodes spliced in *behind* its cached cursor, and current_->Next()
+  // below advances only the source that emitted the previous key. If the
+  // memtable received writes since we last positioned mutable_iter_, we
+  // re-Seek strictly after the just-consumed key so UpdateCurrent() sees
+  // any insert that landed behind the cursor. Sample once so the entire
+  // call agrees on whether the memtable changed; stamp the consumed key
+  // only when we actually need it.
+  const uint64_t mem_entries_at_start = sv_->mem->NumEntries();
+  const bool memtable_changed =
+      (mem_entries_at_start != mutable_iter_num_entries_);
+  IterKey just_consumed;
+  if (memtable_changed) {
+    just_consumed.SetInternalKey(current_->key());
+  }
+
   current_->Next();
   if (current_ != mutable_iter_) {
     if (!current_->status().ok()) {
@@ -599,8 +613,16 @@ void ForwardIterator::Next() {
         current_ = nullptr;
       }
       if (update_prev_key) {
-        mutable_iter_->Seek(prev_key_.GetInternalKey());
+        SeekMutable(prev_key_.GetInternalKey(), /*seek_to_first=*/false);
       }
+    }
+  }
+  if (memtable_changed) {
+    SeekMutable(just_consumed.GetInternalKey(), /*seek_to_first=*/false);
+    if (mutable_iter_->Valid() &&
+        cfd_->internal_comparator().Compare(
+            mutable_iter_->key(), just_consumed.GetInternalKey()) == 0) {
+      mutable_iter_->Next();
     }
   }
   UpdateCurrent();
@@ -716,6 +738,7 @@ void ForwardIterator::RebuildIterators(bool refresh_sv) {
       sv_->mem->NewIterator(read_options_, seqno_to_time_mapping, &arena_,
                             sv_->mutable_cf_options.prefix_extractor.get(),
                             /*for_flush=*/false);
+  mutable_iter_num_entries_ = sv_->mem->NumEntries();
   sv_->imm->AddIterators(read_options_, seqno_to_time_mapping,
                          sv_->mutable_cf_options.prefix_extractor.get(),
                          &imm_iters_, &arena_);
@@ -787,6 +810,7 @@ void ForwardIterator::RenewIterators() {
       svnew->mem->NewIterator(read_options_, seqno_to_time_mapping, &arena_,
                               svnew->mutable_cf_options.prefix_extractor.get(),
                               /*for_flush=*/false);
+  mutable_iter_num_entries_ = svnew->mem->NumEntries();
   svnew->imm->AddIterators(read_options_, seqno_to_time_mapping,
                            svnew->mutable_cf_options.prefix_extractor.get(),
                            &imm_iters_, &arena_);
@@ -953,6 +977,15 @@ void ForwardIterator::UpdateCurrent() {
   // optimization (Seek() would be called on all immutable iterators regardless
   // of whether the target key is greater than prev_key_).
   current_over_upper_bound_ = valid_ && IsOverUpperBound(current_->key());
+}
+
+void ForwardIterator::SeekMutable(const Slice& target, bool seek_to_first) {
+  if (seek_to_first) {
+    mutable_iter_->SeekToFirst();
+  } else {
+    mutable_iter_->Seek(target);
+  }
+  mutable_iter_num_entries_ = sv_->mem->NumEntries();
 }
 
 bool ForwardIterator::NeedToSeekImmutable(const Slice& target) {

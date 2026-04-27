@@ -165,6 +165,89 @@ TEST_P(DBTestTailingIterator, TailingIteratorSeekToNext) {
   Close();
 }
 
+TEST_P(DBTestTailingIterator, TailingIteratorMissedRowAfterFlush) {
+  // Regression test: a key inserted into the mutable memtable while a
+  // tailing iterator is advancing through an immutable source must not be
+  // skipped. ForwardIterator::Next() previously did not re-seek
+  // mutable_iter_ when current_ was an immutable source that remained
+  // valid, so a key spliced behind the cached skiplist cursor would be
+  // silently dropped. See examples/c_tailing_iterator_missed_row_example.c.
+  Options options = CurrentOptions();
+  options.disable_auto_compactions = true;
+  CreateAndReopenWithCF({"pikachu"}, options);
+
+  ReadOptions read_options;
+  read_options.tailing = true;
+  if (GetParam()) {
+    read_options.async_io = true;
+  }
+
+  // Variant 1: empty memtable at iterator construction.
+  ASSERT_OK(Put(1, "A", "vA"));
+  ASSERT_OK(Put(1, "C", "vC"));
+  ASSERT_OK(Flush(1));  // A and C land in L0; mutable memtable is empty.
+
+  {
+    std::unique_ptr<Iterator> iter(db_->NewIterator(read_options, handles_[1]));
+    iter->SeekToFirst();
+    ASSERT_TRUE(iter->Valid());
+    ASSERT_EQ(iter->key().ToString(), "A");
+
+    // Insert B (sorts strictly between A and C) AFTER the iterator has
+    // observed A. Per ReadOptions::tailing's contract, the iterator must
+    // return B.
+    ASSERT_OK(Put(1, "B", "vB"));
+
+    iter->Next();
+    ASSERT_TRUE(iter->Valid());
+    ASSERT_EQ(iter->key().ToString(), "B");
+
+    iter->Next();
+    ASSERT_TRUE(iter->Valid());
+    ASSERT_EQ(iter->key().ToString(), "C");
+
+    iter->Next();
+    ASSERT_FALSE(iter->Valid());
+    ASSERT_OK(iter->status());
+  }
+
+  // Variant 2 ("primed"): memtable is non-empty at iterator construction,
+  // so mutable_iter_ is Valid with its cached cursor at D > C. This
+  // matches the production trace from the Restate vqueue scheduler.
+  DestroyAndReopen(options);
+  CreateAndReopenWithCF({"pikachu"}, options);
+  ASSERT_OK(Put(1, "A", "vA"));
+  ASSERT_OK(Put(1, "C", "vC"));
+  ASSERT_OK(Flush(1));
+  ASSERT_OK(Put(1, "D", "vD"));  // primes the mutable memtable.
+
+  {
+    std::unique_ptr<Iterator> iter(db_->NewIterator(read_options, handles_[1]));
+    iter->SeekToFirst();
+    ASSERT_TRUE(iter->Valid());
+    ASSERT_EQ(iter->key().ToString(), "A");
+
+    ASSERT_OK(Put(1, "B", "vB"));
+
+    iter->Next();
+    ASSERT_TRUE(iter->Valid());
+    ASSERT_EQ(iter->key().ToString(), "B");
+
+    iter->Next();
+    ASSERT_TRUE(iter->Valid());
+    ASSERT_EQ(iter->key().ToString(), "C");
+
+    iter->Next();
+    ASSERT_TRUE(iter->Valid());
+    ASSERT_EQ(iter->key().ToString(), "D");
+
+    iter->Next();
+    ASSERT_FALSE(iter->Valid());
+    ASSERT_OK(iter->status());
+  }
+  Close();
+}
+
 TEST_P(DBTestTailingIterator, TailingIteratorTrimSeekToNext) {
   if (mem_env_ || encrypted_env_) {
     ROCKSDB_GTEST_BYPASS("Test requires non-mem or non-encrypted environment");

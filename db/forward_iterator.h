@@ -47,8 +47,7 @@ using MinIterHeap =
  * ForwardIterator is a special type of iterator that only supports Seek()
  * and Next(). It is expected to perform better than TailingIterator by
  * removing the encapsulation and making all information accessible within
- * the iterator. At the current implementation, snapshot is taken at the
- * time Seek() is called. The Next() followed do not see new values after.
+ * the iterator.
  */
 class ForwardIterator : public InternalIterator {
  public:
@@ -103,6 +102,7 @@ class ForwardIterator : public InternalIterator {
   void ResetIncompleteIterators();
   void SeekInternal(const Slice& internal_key, bool seek_to_first,
                     bool seek_after_async_io);
+  void SeekMutable(const Slice& target, bool seek_to_first);
 
   void UpdateCurrent();
   bool NeedToSeekImmutable(const Slice& internal_key);
@@ -131,6 +131,12 @@ class ForwardIterator : public InternalIterator {
 
   SuperVersion* sv_;
   InternalIterator* mutable_iter_;
+  // MemTable::NumEntries() recorded immediately after each mutable_iter_
+  // Seek (or fresh construction). On Next(), if this no longer matches
+  // sv_->mem->NumEntries(), the memtable received writes that may have
+  // been spliced in behind mutable_iter_'s cached cursor; we re-Seek to
+  // pick them up.
+  uint64_t mutable_iter_num_entries_ = 0;
   std::vector<InternalIterator*> imm_iters_;
   std::vector<InternalIterator*> l0_iters_;
   std::vector<ForwardLevelIterator*> level_iters_;
